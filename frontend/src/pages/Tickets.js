@@ -1,0 +1,417 @@
+import { useEffect, useState } from 'react';
+import axios from 'axios';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
+import { Button } from '../components/ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from '../components/ui/dialog';
+import { Input } from '../components/ui/input';
+import { Label } from '../components/ui/label';
+import { Textarea } from '../components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
+import { Badge } from '../components/ui/badge';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
+import { toast } from 'sonner';
+import { Plus, AlertCircle, Filter, Search, ArrowUpDown, Check, ChevronsUpDown } from 'lucide-react';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '../components/ui/command';
+import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover';
+import { cn } from '../lib/utils';
+
+const API = `${process.env.REACT_APP_API_URL}/api`;
+
+const SiteFilterCombobox = ({ sites, value, onChange }) => {
+  const [open, setOpen] = useState(false);
+
+  const selectedSite = sites.find((site) => site.id === value);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          className="w-full justify-between"
+          data-testid="site-filter-select"
+        >
+          {value && value !== 'all'
+            ? selectedSite?.name
+            : "All Sites"}
+          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[400px] p-0">
+        <Command>
+          <CommandInput placeholder="Search site..." />
+          <CommandList>
+            <CommandEmpty>No site found.</CommandEmpty>
+            <CommandGroup>
+              <CommandItem
+                value="all-sites"
+                onSelect={() => {
+                  onChange('all');
+                  setOpen(false);
+                }}
+              >
+                <Check
+                  className={cn(
+                    "mr-2 h-4 w-4",
+                    value === 'all' || !value ? "opacity-100" : "opacity-0"
+                  )}
+                />
+                All Sites
+              </CommandItem>
+              {sites.map((site) => (
+                <CommandItem
+                  key={site.id}
+                  value={site.name}
+                  onSelect={() => {
+                    onChange(site.id === value ? 'all' : site.id);
+                    setOpen(false);
+                  }}
+                >
+                  <Check
+                    className={cn(
+                      "mr-2 h-4 w-4",
+                      value === site.id ? "opacity-100" : "opacity-0"
+                    )}
+                  />
+                  {site.name}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+};
+
+const Tickets = () => {
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const [tickets, setTickets] = useState([]);
+  const [sites, setSites] = useState([]);
+  const [open, setOpen] = useState(false);
+  const [siteFilter, setSiteFilter] = useState(undefined);
+  const [siteSearch, setSiteSearch] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sortOrder, setSortOrder] = useState('newest');
+  const [formData, setFormData] = useState({
+    title: '',
+    description: '',
+    priority: 'Medium',
+    assigned_to_division: 'Monitoring',
+    site_id: undefined
+  });
+
+  useEffect(() => {
+    fetchTickets();
+    fetchSites();
+  }, []);
+
+  useEffect(() => {
+    if (siteFilter && siteFilter !== 'all') {
+      fetchTickets(siteFilter);
+    } else {
+      fetchTickets();
+    }
+  }, [siteFilter]);
+
+  const fetchTickets = async (site_id = '') => {
+    try {
+      const url = site_id ? `${API}/tickets?site_id=${site_id}` : `${API}/tickets`;
+      const response = await axios.get(url);
+      setTickets(response.data);
+    } catch (error) {
+      console.error('Failed to fetch tickets:', error);
+    }
+  };
+
+  const fetchSites = async () => {
+    try {
+      const response = await axios.get(`${API}/sites`);
+      setSites(response.data);
+    } catch (error) {
+      console.error('Failed to fetch sites:', error);
+    }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+
+    try {
+      await axios.post(`${API}/tickets`, formData);
+      toast.success('Ticket created successfully!');
+      setOpen(false);
+      fetchTickets(siteFilter);
+      setFormData({
+        title: '',
+        description: '',
+        priority: 'Medium',
+        assigned_to_division: 'Monitoring',
+        site_id: undefined
+      });
+      setSiteSearch('');
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Failed to create ticket');
+    }
+  };
+
+  const getPriorityColor = (priority) => {
+    const colors = {
+      Low: 'bg-green-100 text-green-800 border-green-200',
+      Medium: 'bg-yellow-100 text-yellow-800 border-yellow-200',
+      High: 'bg-red-100 text-red-800 border-red-200'
+    };
+    return colors[priority] || 'bg-gray-100 text-gray-800';
+  };
+
+  const getStatusColor = (status) => {
+    const colors = {
+      'Open': 'bg-blue-100 text-blue-800 border-blue-200',
+      'In Progress': 'bg-yellow-100 text-yellow-800 border-yellow-200',
+      'Closed': 'bg-gray-100 text-gray-800 border-gray-200'
+    };
+    return colors[status] || 'bg-gray-100 text-gray-800';
+  };
+
+  const getDivisionColor = (division) => {
+    const colors = {
+      'Monitoring': 'bg-blue-500',
+      'Infra': 'bg-purple-500',
+      'TS': 'bg-green-500'
+    };
+    return colors[division] || 'bg-gray-500';
+  };
+
+  const filteredSites = sites.filter(site =>
+    site.name.toLowerCase().includes(siteSearch.toLowerCase())
+  );
+
+  // Filter and sort tickets
+  const filteredAndSortedTickets = tickets
+    .filter(ticket => {
+      const query = searchQuery.toLowerCase();
+      return (
+        ticket.title.toLowerCase().includes(query) ||
+        ticket.description.toLowerCase().includes(query) ||
+        ticket.created_by_name.toLowerCase().includes(query) ||
+        (ticket.site_name && ticket.site_name.toLowerCase().includes(query))
+      );
+    })
+    .sort((a, b) => {
+      const dateA = new Date(a.created_at);
+      const dateB = new Date(b.created_at);
+      return sortOrder === 'newest' ? dateB - dateA : dateA - dateB;
+    });
+
+  return (
+    <div className="space-y-6" data-testid="tickets-page">
+      <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-4xl font-bold text-slate-800 mb-2">Ticket Management</h1>
+          <p className="text-slate-600">Track and manage support tickets</p>
+        </div>
+
+        <Dialog open={open} onOpenChange={setOpen}>
+          <DialogTrigger asChild>
+            <Button className="bg-red-500 hover:bg-red-600" data-testid="create-ticket-button">
+              <Plus size={18} className="mr-2" />
+              Create Ticket
+            </Button>
+          </DialogTrigger>
+          <DialogContent data-testid="ticket-dialog">
+            <DialogHeader>
+              <DialogTitle>Create New Ticket</DialogTitle>
+              <DialogDescription>Fill in the details to create a new support ticket.</DialogDescription>
+            </DialogHeader>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="title">Title</Label>
+                <Input
+                  id="title"
+                  value={formData.title}
+                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                  required
+                  data-testid="ticket-title-input"
+                  placeholder="VLEPO/Internet/Waas Issue - Site X - 20/11/2025"
+                />
+              </div>
+
+              {/* FIX 5: Site Selection Dropdown with Search */}
+              <div className="space-y-2">
+                <Label htmlFor="site">Site Name</Label>
+                <div className="space-y-2">
+                  <Input
+                    placeholder="Search sites..."
+                    value={siteSearch}
+                    onChange={(e) => setSiteSearch(e.target.value)}
+                    data-testid="site-search-input"
+                  />
+                  <Select value={formData.site_id} onValueChange={(value) => setFormData({ ...formData, site_id: value })}>
+                    <SelectTrigger data-testid="site-select">
+                      <SelectValue placeholder="Select site" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {filteredSites.map(site => (
+                        <SelectItem key={site.id} value={site.id}>
+                          {site.name} {site.location && `- ${site.location}`}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="description">Description</Label>
+                <Textarea
+                  id="description"
+                  value={formData.description}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  required
+                  data-testid="ticket-description-input"
+                  placeholder="Detail issue di site"
+                  rows={4}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Priority</Label>
+                <Select value={formData.priority} onValueChange={(value) => setFormData({ ...formData, priority: value })}>
+                  <SelectTrigger data-testid="priority-select">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Low">Low</SelectItem>
+                    <SelectItem value="Medium">Medium</SelectItem>
+                    <SelectItem value="High">High</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Assign To Division</Label>
+                <Select value={formData.assigned_to_division} onValueChange={(value) => setFormData({ ...formData, assigned_to_division: value })}>
+                  <SelectTrigger data-testid="division-select">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Monitoring">Monitoring</SelectItem>
+                    <SelectItem value="Infra">Infra</SelectItem>
+                    <SelectItem value="TS">TS</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex justify-end space-x-2">
+                <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+                  Cancel
+                </Button>
+                <Button type="submit" className="bg-red-500 hover:bg-red-600" data-testid="submit-ticket-button">
+                  Create Ticket
+                </Button>
+              </div>
+            </form>
+          </DialogContent>
+        </Dialog>
+      </div>
+
+      {/* Search and Filters */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* Search */}
+        <div className="flex items-center space-x-2 p-4 bg-white rounded-lg border">
+          <Search size={18} className="text-slate-600" />
+          <Input
+            placeholder="Search tickets..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="border-0 focus-visible:ring-0 focus-visible:ring-offset-0"
+            data-testid="ticket-search-input"
+          />
+        </div>
+
+        {/* Site Filter */}
+        <div className="flex items-center space-x-2 p-4 bg-white rounded-lg border">
+          <Filter size={18} className="text-slate-600" />
+          <Label className="text-sm font-semibold">Site:</Label>
+          <SiteFilterCombobox
+            sites={sites}
+            value={siteFilter}
+            onChange={setSiteFilter}
+          />
+        </div>
+
+        {/* Sort */}
+        <div className="flex items-center space-x-2 p-4 bg-white rounded-lg border">
+          <ArrowUpDown size={18} className="text-slate-600" />
+          <Label className="text-sm font-semibold">Sort:</Label>
+          <Select value={sortOrder} onValueChange={setSortOrder}>
+            <SelectTrigger className="w-full" data-testid="sort-select">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="newest">Newest First</SelectItem>
+              <SelectItem value="oldest">Oldest First</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      {/* Tickets Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {filteredAndSortedTickets.length === 0 ? (
+          <div className="col-span-full text-center py-12 text-slate-500">
+            {tickets.length === 0 ? 'No tickets created yet' : 'No tickets match your search'}
+          </div>
+        ) : (
+          filteredAndSortedTickets.map((ticket) => (
+            <Card
+              key={ticket.id}
+              className="hover:shadow-lg transition-all cursor-pointer border-l-4"
+              style={{ borderLeftColor: getDivisionColor(ticket.assigned_to_division).replace('bg-', '#').replace('500', '') }}
+              onClick={() => navigate(`/tickets/${ticket.id}`)}
+              data-testid={`ticket-card-${ticket.id}`}
+            >
+              <CardHeader>
+                <div className="flex items-start justify-between">
+                  <CardTitle className="text-lg flex items-start space-x-2">
+                    <AlertCircle size={20} className="text-red-500 mt-1 flex-shrink-0" />
+                    <span>{ticket.title}</span>
+                  </CardTitle>
+                  <Badge className={getPriorityColor(ticket.priority)}>
+                    {ticket.priority}
+                  </Badge>
+                </div>
+                <CardDescription className="text-xs">
+                  By {ticket.created_by_name} • {ticket.assigned_to_division}
+                  {ticket.site_name && ` • ${ticket.site_name}`}
+                </CardDescription>
+                <CardDescription className="text-xs text-slate-400">
+                  Created: {new Date(ticket.created_at).toLocaleString()}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <p className="text-sm text-slate-600 line-clamp-2">{ticket.description}</p>
+
+                <div className="flex items-center justify-between">
+                  <Badge className={getStatusColor(ticket.status)}>
+                    {ticket.status}
+                  </Badge>
+                </div>
+
+                {ticket.comments && ticket.comments.length > 0 && (
+                  <p className="text-xs text-slate-500">
+                    {ticket.comments.length} comment{ticket.comments.length !== 1 ? 's' : ''}
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          ))
+        )}
+      </div>
+    </div >
+  );
+};
+
+export default Tickets;

@@ -248,11 +248,11 @@ const Reports = () => {
 
   const fetchReports = async (site_id = '', division = 'all') => {
     try {
-      let url = `${API}/reports?`;
-      if (site_id && site_id !== 'all') url += `site_id=${site_id}&`;
-      if (division && division !== 'all') url += `division=${division}&`;
+      const params = {};
+      if (site_id && site_id !== 'all') params.site_id = site_id;
+      if (division && division !== 'all') params.division = division;
 
-      const response = await axios.get(url);
+      const response = await axios.get(`${API}/reports`, { params });
       setReports(response.data);
     } catch (error) {
       console.error('Failed to fetch reports:', error);

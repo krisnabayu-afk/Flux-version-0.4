@@ -86,6 +86,61 @@ const SiteFilterCombobox = ({ sites, value, onChange }) => {
       </PopoverContent>
     </Popover>
   );
+
+};
+
+const SiteCreationCombobox = ({ sites, value, onChange }) => {
+  const [open, setOpen] = useState(false);
+
+  const selectedSite = sites.find((site) => site.id === value);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          className="w-full justify-between bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700"
+          data-testid="site-select-combobox"
+        >
+          {value
+            ? selectedSite?.name
+            : "Select site..."}
+          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[400px] p-0 bg-gray-900 border-gray-700">
+        <Command className="bg-gray-900 border-gray-700">
+          <CommandInput placeholder="Search site..." className="text-white" />
+          <CommandList>
+            <CommandEmpty className="text-gray-400">No site found.</CommandEmpty>
+            <CommandGroup>
+              {sites.map((site) => (
+                <CommandItem
+                  key={site.id}
+                  value={site.name}
+                  className="text-gray-200 data-[selected=true]:bg-gray-800"
+                  onSelect={() => {
+                    onChange(site.id === value ? "" : site.id);
+                    setOpen(false);
+                  }}
+                >
+                  <Check
+                    className={cn(
+                      "mr-2 h-4 w-4",
+                      value === site.id ? "opacity-100" : "opacity-0"
+                    )}
+                  />
+                  {site.name}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
 };
 
 const Tickets = () => {
@@ -95,7 +150,6 @@ const Tickets = () => {
   const [sites, setSites] = useState([]);
   const [open, setOpen] = useState(false);
   const [siteFilter, setSiteFilter] = useState(undefined);
-  const [siteSearch, setSiteSearch] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [sortOrder, setSortOrder] = useState('newest');
   const [formData, setFormData] = useState({
@@ -153,7 +207,6 @@ const Tickets = () => {
         assigned_to_division: 'Monitoring',
         site_id: undefined
       });
-      setSiteSearch('');
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Failed to create ticket');
     }
@@ -186,9 +239,7 @@ const Tickets = () => {
     return colors[division] || 'bg-gray-500';
   };
 
-  const filteredSites = sites.filter(site =>
-    site.name.toLowerCase().includes(siteSearch.toLowerCase())
-  );
+
 
   // Filter and sort tickets
   const filteredAndSortedTickets = tickets
@@ -248,27 +299,11 @@ const Tickets = () => {
               {/* FIX 5: Site Selection Dropdown with Search */}
               <div className="space-y-2">
                 <Label htmlFor="site" className="text-gray-300">Site Name</Label>
-                <div className="space-y-2">
-                  <Input
-                    placeholder="Search sites..."
-                    value={siteSearch}
-                    onChange={(e) => setSiteSearch(e.target.value)}
-                    className="bg-gray-800 border-gray-700 text-white"
-                    data-testid="site-search-input"
-                  />
-                  <Select value={formData.site_id} onValueChange={(value) => setFormData({ ...formData, site_id: value })}>
-                    <SelectTrigger className="bg-slate-800 border-slate-700 text-white" data-testid="site-select">
-                      <SelectValue placeholder="Select site" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-slate-800 border-slate-700 text-white">
-                      {filteredSites.map(site => (
-                        <SelectItem key={site.id} value={site.id}>
-                          {site.name} {site.location && `- ${site.location}`}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                <SiteCreationCombobox
+                  sites={sites}
+                  value={formData.site_id}
+                  onChange={(val) => setFormData({ ...formData, site_id: val })}
+                />
               </div>
 
               <div className="space-y-2">

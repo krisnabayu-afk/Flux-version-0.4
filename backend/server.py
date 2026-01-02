@@ -1457,47 +1457,68 @@ async def get_reports(
     division: Optional[str] = None,
     current_user: dict = Depends(get_current_user)
 ):
-    # Universal visibility - all users can view all reports, but can filter
+    # Permission Logic
+    user_role = current_user["role"]
+    user_division = current_user.get("division")
     
-    # Start with aggregation pipeline
+    # Define visibility scope based on division permissions
+    allowed_divisions = None # None means all access (VP/SuperUser)
+    
+    if user_role not in ["VP", "SuperUser"]:
+        if user_division in ["Infra", "Fiberzone"]:
+            allowed_divisions = ["Infra", "Fiberzone"]
+        elif user_division in ["TS", "Apps"]:
+            allowed_divisions = ["TS", "Apps"]
+        else:
+            # Default to seeing only own division for others (e.g. Monitoring)
+            allowed_divisions = [user_division] if user_division else []
+
+    # Start aggregation pipeline
     pipeline = []
     
     # Match stage for site_id if provided
-    match_stage = {}
-    if site_id:
-        match_stage["site_id"] = site_id
+    if site_id and site_id != "all":
+        pipeline.append({"$match": {"site_id": site_id}})
+        
+    # Lookup submitter info to check division
+    pipeline.append({
+        "$lookup": {
+            "from": "users",
+            "localField": "submitted_by",
+            "foreignField": "id",
+            "as": "submitter_info"
+        }
+    })
     
-    if match_stage:
-        pipeline.append({"$match": match_stage})
-        
-    # User lookup for division filtering
-    if division and division != "all":
-        # Lookup user info to check division
-        pipeline.append({
-            "$lookup": {
-                "from": "users",
-                "localField": "submitted_by",
-                "foreignField": "id",
-                "as": "submitter_info"
-            }
-        })
-        
-        # Unwind (preserve nulls just in case, though ideally shouldn't happen)
-        pipeline.append({"$unwind": {"path": "$submitter_info", "preserveNullAndEmptyArrays": True}})
-        
-        # Filter based on division request
-        if division == "Monitoring":
-            pipeline.append({"$match": {"submitter_info.division": "Monitoring"}})
-        elif division == "Infra & Fiberzone":
-            pipeline.append({"$match": {"submitter_info.division": {"$in": ["Infra", "Fiberzone"]}}})
-        elif division == "TS & Apps":
-            pipeline.append({"$match": {"submitter_info.division": {"$in": ["TS", "Apps"]}}})
-            
-        # Cleanup - remove the joined info to keep response clean
-        pipeline.append({"$project": {"submitter_info": 0}})
+    # Unwind (preserve nulls just in case)
+    pipeline.append({"$unwind": {"path": "$submitter_info", "preserveNullAndEmptyArrays": True}})
 
-    # Exclude file_data and _id
-    pipeline.append({"$project": {"file_data": 0, "_id": 0}})
+    # Build filtering conditions
+    match_conditions = []
+
+    # 1. Enforce requested filter (from UI) if provided
+    # Note: If a user requests a filter outside their permission scope, the intersection with allowed_divisions will naturally return nothing.
+    if division and division != "all":
+        if division == "Infra & Fiberzone":
+             match_conditions.append({"submitter_info.division": {"$in": ["Infra", "Fiberzone"]}})
+        elif division == "TS & Apps":
+             match_conditions.append({"submitter_info.division": {"$in": ["TS", "Apps"]}})
+        elif division == "Monitoring":
+             match_conditions.append({"submitter_info.division": "Monitoring"})
+        else:
+             # Fallback for simple division names
+             match_conditions.append({"submitter_info.division": division})
+
+    # 2. Enforce Access Control (Security)
+    if allowed_divisions is not None:
+        match_conditions.append({"submitter_info.division": {"$in": allowed_divisions}})
+        
+    # Apply filters if any exist
+    if match_conditions:
+        pipeline.append({"$match": {"$and": match_conditions}})
+
+    # Cleanup and project (exclude heavy data and helper fields)
+    pipeline.append({"$project": {"submitter_info": 0, "file_data": 0, "_id": 0}})
 
     # Execute aggregation
     reports = await db.reports.aggregate(pipeline).to_list(1000)

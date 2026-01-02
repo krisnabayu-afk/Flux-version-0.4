@@ -1457,72 +1457,74 @@ async def get_reports(
     division: Optional[str] = None,
     current_user: dict = Depends(get_current_user)
 ):
-    # Permission Logic
+    print(f"DEBUG: get_reports (Python) - User: {current_user.get('username')}, Div: {current_user.get('division')}")
+    
+    # 1. Fetch Reports (with projection)
+    query = {}
+    if site_id and site_id != "all":
+        query["site_id"] = site_id
+        
+    # Sort by newest first to ensure we get recent reports within the limit
+    reports_cursor = db.reports.find(query, {"file_data": 0, "_id": 0}).sort("created_at", -1).limit(1000)
+    reports = await reports_cursor.to_list(1000)
+    
+    if not reports:
+        return []
+
+    # 2. Collect Submitter IDs
+    user_ids = list(set([r.get("submitted_by") for r in reports if r.get("submitted_by")]))
+    
+    # 3. Fetch Users
+    users_cursor = db.users.find({"id": {"$in": user_ids}}, {"id": 1, "division": 1, "_id": 0})
+    users_list = await users_cursor.to_list(1000)
+    user_map = {u["id"]: u.get("division") for u in users_list}
+    
+    # 4. Permission Logic (Define allowed scope)
     user_role = current_user["role"]
     user_division = current_user.get("division")
     
-    # Define visibility scope based on division permissions
-    allowed_divisions = None # None means all access (VP/SuperUser)
-    
+    allowed_divisions = None # All allowed
     if user_role not in ["VP", "SuperUser"]:
         if user_division in ["Infra", "Fiberzone"]:
             allowed_divisions = ["Infra", "Fiberzone"]
         elif user_division in ["TS", "Apps"]:
             allowed_divisions = ["TS", "Apps"]
         else:
-            # Default to seeing only own division for others (e.g. Monitoring)
             allowed_divisions = [user_division] if user_division else []
-
-    # Start aggregation pipeline
-    pipeline = []
+            
+    # 5. Filter Results
+    filtered_reports = []
     
-    # Match stage for site_id if provided
-    if site_id and site_id != "all":
-        pipeline.append({"$match": {"site_id": site_id}})
+    for report in reports:
+        submitter_id = report.get("submitted_by")
+        submitter_div = user_map.get(submitter_id)
         
-    # Lookup submitter info to check division
-    pipeline.append({
-        "$lookup": {
-            "from": "users",
-            "localField": "submitted_by",
-            "foreignField": "id",
-            "as": "submitter_info"
-        }
-    })
-    
-    # Unwind (preserve nulls just in case)
-    pipeline.append({"$unwind": {"path": "$submitter_info", "preserveNullAndEmptyArrays": True}})
-
-    # Build filtering conditions
-    match_conditions = []
-
-    # 1. Enforce requested filter (from UI) if provided
-    # Note: If a user requests a filter outside their permission scope, the intersection with allowed_divisions will naturally return nothing.
-    if division and division != "all":
-        if division == "Infra & Fiberzone":
-             match_conditions.append({"submitter_info.division": {"$in": ["Infra", "Fiberzone"]}})
-        elif division == "TS & Apps":
-             match_conditions.append({"submitter_info.division": {"$in": ["TS", "Apps"]}})
-        elif division == "Monitoring":
-             match_conditions.append({"submitter_info.division": "Monitoring"})
-        else:
-             # Fallback for simple division names
-             match_conditions.append({"submitter_info.division": division})
-
-    # 2. Enforce Access Control (Security)
-    if allowed_divisions is not None:
-        match_conditions.append({"submitter_info.division": {"$in": allowed_divisions}})
+        # Security Check: Is this report allowed for the current user?
+        if allowed_divisions is not None:
+            if submitter_div not in allowed_divisions:
+                continue # Skip disallowed report
         
-    # Apply filters if any exist
-    if match_conditions:
-        pipeline.append({"$match": {"$and": match_conditions}})
-
-    # Cleanup and project (exclude heavy data and helper fields)
-    pipeline.append({"$project": {"submitter_info": 0, "file_data": 0, "_id": 0}})
-
-    # Execute aggregation
-    reports = await db.reports.aggregate(pipeline).to_list(1000)
-    return reports
+        # UI Filter Check: Does this report match the requested filter?
+        if division and division != "all":
+            if division == "Infra & Fiberzone":
+                if submitter_div not in ["Infra", "Fiberzone"]:
+                    continue
+            elif division == "TS & Apps":
+                if submitter_div not in ["TS", "Apps"]:
+                    continue
+            elif division == "Monitoring":
+                if submitter_div != "Monitoring":
+                    continue
+            else:
+                # Exact match
+                if submitter_div != division:
+                    continue
+                    
+        # If we passed both checks, add to result
+        filtered_reports.append(report)
+        
+    print(f"DEBUG: Returning {len(filtered_reports)} reports after filtering")
+    return filtered_reports
 
 @api_router.get("/reports/{report_id}")
 async def get_report(report_id: str, current_user: dict = Depends(get_current_user)):

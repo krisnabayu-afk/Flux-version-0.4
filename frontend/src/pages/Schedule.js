@@ -295,7 +295,9 @@ const Schedule = () => {
   const [activityDetailOpen, setActivityDetailOpen] = useState(false);
   const [selectedScheduleForActivity, setSelectedScheduleForActivity] = useState(null); // To hold the schedule for which activity is being viewed
   const [activityData, setActivityData] = useState(null); // To hold the fetched activity data
+
   const [loadingActivity, setLoadingActivity] = useState(false);
+  const [previewImage, setPreviewImage] = useState(null); // NEW: Image preview state
 
   // PHASE 2: SPV can also edit/delete
   const canEdit = user?.role === 'VP' || user?.role === 'Manager' || user?.role === 'SPV' || user?.role === 'SuperUser';
@@ -1208,11 +1210,10 @@ const Schedule = () => {
                                         : `data:image/jpeg;base64,${update.image_data}`}
                                       alt="Update attachment"
                                       className="max-h-40 rounded border border-slate-200 cursor-pointer hover:opacity-90"
-                                      onClick={() => window.open(
+                                      onClick={() => setPreviewImage(
                                         update.image_url
                                           ? `${process.env.REACT_APP_API_URL}${update.image_url}`
-                                          : `data:image/jpeg;base64,${update.image_data}`,
-                                        '_blank'
+                                          : `data:image/jpeg;base64,${update.image_data}`
                                       )}
                                     />
                                   </div>
@@ -1247,6 +1248,25 @@ const Schedule = () => {
               )}
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Image Preview Dialog */}
+      <Dialog open={!!previewImage} onOpenChange={(open) => !open && setPreviewImage(null)}>
+        <DialogContent className="max-w-4xl p-0 overflow-hidden bg-transparent border-0 shadow-none [&>button]:hidden">
+          <div className="relative flex justify-center items-center h-full">
+            <img
+              src={previewImage}
+              alt="Preview"
+              className="max-w-full max-h-[90vh] object-contain rounded-lg"
+            />
+            <button
+              onClick={() => setPreviewImage(null)}
+              className="absolute top-2 right-2 bg-black/50 text-white p-2 rounded-full hover:bg-black/70 transition-colors"
+            >
+              <XCircle size={24} />
+            </button>
+          </div>
         </DialogContent>
       </Dialog>
     </div >

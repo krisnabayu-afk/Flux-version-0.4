@@ -11,7 +11,7 @@ import { Badge } from '../components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { toast } from 'sonner';
-import { Plus, Download, Check, X, Eye, Filter, Edit, Search, ArrowUpDown, ChevronsUpDown, Trash2 } from 'lucide-react';
+import { Plus, Download, Check, X, Eye, Filter, Edit, Search, ArrowUpDown, ChevronsUpDown, Trash2, FileText, ExternalLink } from 'lucide-react';
 import { ScrollArea } from '../components/ui/scroll-area';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '../components/ui/command';
 import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover';
@@ -197,6 +197,7 @@ const Reports = () => {
   const [categories, setCategories] = useState([]); // NEW: Activity categories
   const [open, setOpen] = useState(false);
   const [viewOpen, setViewOpen] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false); // NEW: Preview dialog state
   const [editOpen, setEditOpen] = useState(false); // PHASE 3: Edit dialog
   const [selectedReport, setSelectedReport] = useState(null);
   const [siteFilter, setSiteFilter] = useState(undefined);
@@ -784,69 +785,102 @@ const Reports = () => {
 
       {/* View Report Dialog */}
       <Dialog open={viewOpen} onOpenChange={setViewOpen}>
-        <DialogContent className="max-w-2xl" data-testid="view-report-dialog">
+        <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col" data-testid="view-report-dialog">
           <DialogHeader>
             <DialogTitle>Report Details</DialogTitle>
             <DialogDescription>View the details of the selected report.</DialogDescription>
           </DialogHeader>
-          <ScrollArea className="max-h-[80vh] pr-4">
+          <div className="flex-1 overflow-y-auto pr-4 custom-scrollbar">
             {selectedReport && (
-              <div className="space-y-4">
-                <div>
-                  <h3 className="font-semibold text-lg">{selectedReport.title}</h3>
-                  <p className="text-sm text-slate-300 mt-1">{selectedReport.description}</p>
+              <div className="space-y-6">
+                {/* Header Info */}
+                <div className="border-b pb-4">
+                  <h3 className="font-bold text-2xl text-white mb-2">{selectedReport.title}</h3>
+                  <p className="text-slate-300">{selectedReport.description}</p>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4 text-sm">
+                {/* Metadata Grid */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm bg-slate-900/50 p-4 rounded-lg">
                   <div>
-                    <p className="font-semibold">Submitted By:</p>
-                    <p className="text-slate-300">{selectedReport.submitted_by_name}</p>
+                    <p className="text-slate-400 text-xs uppercase tracking-wider mb-1">Submitted By</p>
+                    <p className="font-medium text-slate-200">{selectedReport.submitted_by_name}</p>
                   </div>
                   <div>
-                    <p className="font-semibold">Status:</p>
+                    <p className="text-slate-400 text-xs uppercase tracking-wider mb-1">Status</p>
                     <Badge className={getStatusColor(selectedReport.status)}>
                       {selectedReport.status}
                     </Badge>
                   </div>
                   {selectedReport.category_name && (
                     <div>
-                      <p className="font-semibold">Category:</p>
-                      <p className="text-slate-300">{selectedReport.category_name}</p>
+                      <p className="text-slate-400 text-xs uppercase tracking-wider mb-1">Category</p>
+                      <p className="font-medium text-slate-200">{selectedReport.category_name}</p>
                     </div>
                   )}
                   {selectedReport.site_name && (
                     <div>
-                      <p className="font-semibold">Site:</p>
-                      <p className="text-slate-300">{selectedReport.site_name}</p>
+                      <p className="text-slate-400 text-xs uppercase tracking-wider mb-1">Site</p>
+                      <p className="font-medium text-slate-200">{selectedReport.site_name}</p>
                     </div>
                   )}
                   <div>
-                    <p className="font-semibold">Version:</p>
-                    <p className="text-slate-300">{selectedReport.version}</p>
+                    <p className="text-slate-400 text-xs uppercase tracking-wider mb-1">Version</p>
+                    <p className="font-medium text-slate-200">{selectedReport.version}</p>
                   </div>
                   <div>
-                    <p className="font-semibold">File:</p>
-                    <p className="text-slate-300">{selectedReport.file_name}</p>
-                  </div>
-                  <div>
-                    <p className="font-semibold">Created:</p>
-                    <p className="text-slate-300">{new Date(selectedReport.created_at).toLocaleString()}</p>
+                    <p className="text-slate-400 text-xs uppercase tracking-wider mb-1">Created</p>
+                    <p className="font-medium text-slate-200">{new Date(selectedReport.created_at).toLocaleString()}</p>
                   </div>
                 </div>
 
-                <Button
-                  onClick={() => downloadFile(selectedReport.file_url, selectedReport.file_data, selectedReport.file_name)}
-                  className="w-full"
-                  data-testid="download-report-button"
-                >
-                  <Download size={16} className="mr-2" />
-                  Download Document
-                </Button>
+                {/* Document Preview Section */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h4 className="font-semibold text-white">Document</h4>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => downloadFile(selectedReport.file_url, selectedReport.file_data, selectedReport.file_name)}
+                      data-testid="download-report-button"
+                    >
+                      <Download size={14} className="mr-2" />
+                      Download
+                    </Button>
+                  </div>
+
+                  <div
+                    className="bg-slate-900/50 border border-slate-700 rounded-lg overflow-hidden min-h-[100px] flex flex-col items-center justify-center p-4 cursor-pointer hover:bg-slate-800 transition-colors group"
+                    onClick={() => {
+                      if (selectedReport.file_name && selectedReport.file_name.toLowerCase().endsWith('.pdf')) {
+                        setPreviewOpen(true);
+                      } else {
+                        downloadFile(selectedReport.file_url, selectedReport.file_data, selectedReport.file_name);
+                      }
+                    }}
+                  >
+                    {selectedReport.file_name && selectedReport.file_name.toLowerCase().endsWith('.pdf') ? (
+                      <>
+                        <FileText size={32} className="text-purple-400 mb-2 group-hover:scale-110 transition-transform" />
+                        <p className="font-medium text-slate-200 text-sm">Click to Preview PDF</p>
+                        <p className="text-xs text-slate-500 mt-1">{selectedReport.file_name}</p>
+                      </>
+                    ) : (
+                      <>
+                        <FileText size={32} className="text-slate-500 mb-2" />
+                        <p className="font-medium text-slate-400 text-sm mb-1">Preview not available</p>
+                        <p className="text-xs text-slate-500">{selectedReport.file_name}</p>
+                        <p className="text-xs text-purple-400 mt-1 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <Download size={12} /> Click to download
+                        </p>
+                      </>
+                    )}
+                  </div>
+                </div>
 
                 {/* Comments Section */}
                 <div className="pt-4 border-t">
                   <h4 className="font-semibold mb-3">Comments</h4>
-                  <div className="space-y-4 max-h-60 overflow-y-auto mb-4">
+                  <div className="space-y-4 max-h-60 overflow-y-auto mb-4 custom-scrollbar">
                     {selectedReport.comments && selectedReport.comments.length > 0 ? (
                       selectedReport.comments.map((comment, index) => (
                         <div key={index} className="bg-slate-800/50 border border-slate-700 p-3 rounded-lg text-sm">
@@ -878,7 +912,7 @@ const Reports = () => {
                 </div>
               </div>
             )}
-          </ScrollArea>
+          </div>
           {/* Footer Action Buttons */}
           {selectedReport && canEditReport(selectedReport) && (
             <div className="flex justify-end gap-2 mt-4 pt-4 border-t">
@@ -968,6 +1002,50 @@ const Reports = () => {
               </Button>
             </div>
           </form>
+        </DialogContent>
+      </Dialog>
+      {/* Fullscreen PDF Preview Dialog */}
+      <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
+        <DialogContent className="max-w-[95vw] h-[95vh] flex flex-col p-0 bg-slate-950 border-slate-800 [&>button]:hidden" data-testid="pdf-preview-dialog">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800 bg-slate-900/50">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-purple-500/10 rounded-lg">
+                <FileText size={20} className="text-purple-400" />
+              </div>
+              <div>
+                <h3 className="font-medium text-slate-200">{selectedReport?.file_name}</h3>
+                <p className="text-xs text-slate-500">Document Preview</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => downloadFile(selectedReport.file_url, selectedReport.file_data, selectedReport.file_name)}
+                className="gap-2"
+              >
+                <Download size={14} />
+                Download
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setPreviewOpen(false)}
+                className="hover:bg-slate-800 text-slate-400 hover:text-white"
+              >
+                <X size={20} />
+              </Button>
+            </div>
+          </div>
+          <div className="flex-1 bg-slate-900 relative">
+            {selectedReport && selectedReport.file_url && (
+              <iframe
+                src={`${process.env.REACT_APP_API_URL}${selectedReport.file_url}`}
+                className="w-full h-full border-none"
+                title="PDF Fullscreen Preview"
+              />
+            )}
+          </div>
         </DialogContent>
       </Dialog>
     </div >
